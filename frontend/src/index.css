@@ -53,8 +53,126 @@ button {
   box-shadow: 0 24px 70px rgba(41, 52, 83, 0.09), 0 2px 8px rgba(41, 52, 83, 0.03);
 }
 
+.auth-card {
+  width: min(100%, 480px);
+  padding: 42px 44px 30px;
+}
+
+.auth-form {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+}
+
+.auth-form label {
+  margin-top: 7px;
+  color: #434d60;
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.auth-form input {
+  width: 100%;
+  padding: 12px 14px;
+  border: 1px solid #e3e7ef;
+  border-radius: 10px;
+  outline: none;
+  background: #fbfcfe;
+  color: #202a3a;
+  font-size: 14px;
+}
+
+.auth-form input:focus {
+  border-color: #858be0;
+  box-shadow: 0 0 0 3px rgba(104, 112, 199, 0.12);
+}
+
+.field-note {
+  color: #798295;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.auth-submit {
+  min-height: 46px;
+  margin-top: 12px;
+  border: 0;
+  border-radius: 10px;
+  background: #656dc3;
+  color: #fff;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.auth-submit:hover:not(:disabled) {
+  background: #555db3;
+}
+
+.auth-submit:disabled {
+  cursor: wait;
+  opacity: 0.7;
+}
+
+.auth-switch {
+  margin-top: 22px;
+  color: #798295;
+  font-size: 13px;
+  text-align: center;
+}
+
+.auth-switch button {
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: #555db3;
+  font-weight: 700;
+}
+
 .heading {
   margin-bottom: 28px;
+}
+
+.app-heading {
+  margin-bottom: 24px;
+}
+
+.welcome-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.signout-button {
+  flex: 0 0 auto;
+  margin-top: 12px;
+  padding: 8px 11px;
+  border: 1px solid #e3e7ef;
+  border-radius: 8px;
+  background: #fff;
+  color: #606a7c;
+  font-size: 12px;
+}
+
+.signout-button:hover:not(:disabled) {
+  border-color: #c9cdef;
+  color: #555db3;
+}
+
+.signout-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+.signed-in-as {
+  margin-top: 9px;
+  color: #858e9f;
+  font-size: 12px;
+}
+
+.signed-in-as strong {
+  color: #5d6678;
+  font-weight: 600;
 }
 
 .eyebrow {
@@ -317,6 +435,18 @@ h1 {
 
   .todo-card {
     padding: 30px 21px 20px;
+  }
+
+  .auth-card {
+    padding: 30px 21px 25px;
+  }
+
+  .welcome-row {
+    align-items: center;
+  }
+
+  .signout-button {
+    margin-top: 8px;
   }
 
   .add-form {
