@@ -4,14 +4,14 @@ import re
 import secrets
 import time
 from contextlib import asynccontextmanager
-from typing import Annotated
+from typing import Annotated, Literal
 
 from dotenv import load_dotenv
 from fastapi import Depends, FastAPI, Header, HTTPException, Request, Response, status
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 from pwdlib import PasswordHash
-from sqlalchemy import Boolean, ForeignKey, Integer, String, create_engine, inspect, select, text
+from sqlalchemy import Boolean, ForeignKey, Integer, String, create_engine, delete, inspect, select, text
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import DeclarativeBase, Mapped, Session, mapped_column, sessionmaker
 
@@ -70,10 +70,26 @@ class Credentials(BaseModel):
     @field_validator("username")
     @classmethod
     def normalize_username(cls, value: str) -> str:
-        value = value.strip().lower()
-        if not re.fullmatch(r"[a-z0-9_.-]{3,32}", value):
-            raise ValueError("Use 3-32 letters, numbers, dots, underscores, or hyphens")
-        return value
+        return clean_username(value)
+
+
+class UsernameUpdate(BaseModel):
+    username: str = Field(min_length=3, max_length=32)
+
+    @field_validator("username")
+    @classmethod
+    def normalize_username(cls, value: str) -> str:
+        return clean_username(value)
+
+
+class PasswordUpdate(BaseModel):
+    current_password: str = Field(min_length=1, max_length=128)
+    new_password: str = Field(min_length=12, max_length=128)
+
+
+class AccountDelete(BaseModel):
+    password: str = Field(min_length=1, max_length=128)
+    confirmation: Literal["DELETE"]
 
 
 class TodoCreate(BaseModel):
@@ -114,6 +130,18 @@ class TodoRead(BaseModel):
 class AuthRead(BaseModel):
     username: str
     csrf_token: str
+
+
+class UserRead(BaseModel):
+    id: int
+    username: str
+
+
+def clean_username(value: str) -> str:
+    value = value.strip().lower()
+    if not re.fullmatch(r"[a-z0-9_.-]{3,32}", value):
+        raise ValueError("Use 3-32 letters, numbers, dots, underscores, or hyphens")
+    return value
 
 
 def migrate_todo_owner_column() -> None:
@@ -265,6 +293,69 @@ def get_me(current: CurrentSession, db: DbSession):
 @app.post("/auth/logout", status_code=status.HTTP_204_NO_CONTENT)
 def logout(current: CsrfSession, db: DbSession, response: Response):
     db.delete(current)
+    db.commit()
+    response.delete_cookie(
+        key=SESSION_COOKIE,
+        httponly=True,
+        secure=COOKIE_SECURE,
+        samesite="strict",
+        path="/",
+    )
+    response.status_code = status.HTTP_204_NO_CONTENT
+    return response
+
+
+@app.get("/users/me", response_model=UserRead)
+def get_profile(current: CurrentSession, db: DbSession):
+    user = db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    return UserRead(id=user.id, username=user.username)
+
+
+@app.patch("/users/me", response_model=UserRead)
+def update_profile(changes: UsernameUpdate, current: CsrfSession, db: DbSession):
+    user = db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    user.username = changes.username
+    try:
+        db.commit()
+    except IntegrityError:
+        db.rollback()
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail="Username is unavailable")
+    db.refresh(user)
+    return UserRead(id=user.id, username=user.username)
+
+
+@app.post("/users/me/password", response_model=AuthRead)
+def change_password(changes: PasswordUpdate, current: CsrfSession, response: Response, db: DbSession):
+    user = db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    if not password_hasher.verify(changes.current_password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Current password is incorrect")
+    user.password_hash = password_hasher.hash(changes.new_password)
+    db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    db.commit()
+    return start_session(db, user, response)
+
+
+@app.delete("/users/me", status_code=status.HTTP_204_NO_CONTENT)
+def delete_account(
+    confirmation: AccountDelete,
+    current: CsrfSession,
+    response: Response,
+    db: DbSession,
+):
+    user = db.get(User, current.user_id)
+    if user is None:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail="Not authenticated")
+    if not password_hasher.verify(confirmation.password, user.password_hash):
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail="Password is incorrect")
+    db.execute(delete(AuthSession).where(AuthSession.user_id == user.id))
+    db.execute(delete(Todo).where(Todo.owner_id == user.id))
+    db.delete(user)
     db.commit()
     response.delete_cookie(
         key=SESSION_COOKIE,

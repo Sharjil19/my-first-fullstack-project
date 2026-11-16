@@ -54,6 +54,10 @@ For local HTTP development, keep `COOKIE_SECURE=false`. Set `COOKIE_SECURE=true`
 | `POST` | `/auth/login` | Sign in |
 | `GET` | `/auth/me` | Get the signed-in account and CSRF token |
 | `POST` | `/auth/logout` | Sign out |
+| `GET` | `/users/me` | View your account profile |
+| `PATCH` | `/users/me` | Change your username |
+| `POST` | `/users/me/password` | Change your password and sign out other sessions |
+| `DELETE` | `/users/me` | Delete your account and its todos |
 | `GET` | `/todos` | List your todos |
 | `GET` | `/todos/{id}` | Get one of your todos |
 | `POST` | `/todos` | Create a todo (`{"title": "..."}`) |
@@ -61,5 +65,6 @@ For local HTTP development, keep `COOKIE_SECURE=false`. Set `COOKIE_SECURE=true`
 | `DELETE` | `/todos/{id}` | Delete your todo |
 
 Passwords must be 12-128 characters. They are stored as Argon2 hashes. Sessions use random, server-side tokens in HttpOnly, SameSite cookies; write requests also require a CSRF token. Use HTTPS and set `COOKIE_SECURE=true` outside local development. If you already have todos from an earlier version, they are left unassigned and are not exposed to any account.
+Changing a password requires the current password and invalidates all existing sessions, then signs in the current browser again. Account deletion requires the current password and typing `DELETE`; it permanently removes that account's todos.
 
 This is a learning app, not a production-ready identity service. Before exposing it publicly, add login rate limiting and account recovery, and use managed secrets and database migrations.

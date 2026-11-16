@@ -79,7 +79,14 @@ export default function App() {
   const [isRegistering, setIsRegistering] = useState(false);
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
+  const [accountOpen, setAccountOpen] = useState(false);
+  const [profileUsername, setProfileUsername] = useState("");
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [deletePassword, setDeletePassword] = useState("");
+  const [deleteConfirmation, setDeleteConfirmation] = useState("");
   const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
   const loadTodos = useCallback(async () => {
     setTodos(await request<Todo[]>("/todos"));
@@ -133,8 +140,92 @@ export default function App() {
       setTodos([]);
       setUsername("");
       setPassword("");
+      setAccountOpen(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Could not sign out");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function saveUsername(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await request<{ id: number; username: string }>(
+        "/users/me",
+        { method: "PATCH", body: JSON.stringify({ username: profileUsername }) },
+        auth.csrf_token,
+      );
+      setAuth((current) => current ? { ...current, username: updated.username } : current);
+      setProfileUsername(updated.username);
+      setNotice("Username updated.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update username");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function updatePassword(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      const updated = await request<Auth>(
+        "/users/me/password",
+        {
+          method: "POST",
+          body: JSON.stringify({
+            current_password: currentPassword,
+            new_password: newPassword,
+          }),
+        },
+        auth.csrf_token,
+      );
+      setAuth(updated);
+      setCurrentPassword("");
+      setNewPassword("");
+      setNotice("Password updated. Other active sessions have been signed out.");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not update password");
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function removeAccount(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!auth) return;
+    setBusy(true);
+    setError("");
+    setNotice("");
+    try {
+      await request<void>(
+        "/users/me",
+        {
+          method: "DELETE",
+          body: JSON.stringify({
+            password: deletePassword,
+            confirmation: deleteConfirmation,
+          }),
+        },
+        auth.csrf_token,
+      );
+      setAuth(null);
+      setTodos([]);
+      setUsername("");
+      setPassword("");
+      setAccountOpen(false);
+      setDeletePassword("");
+      setDeleteConfirmation("");
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "Could not delete account");
     } finally {
       setBusy(false);
     }
@@ -242,7 +333,7 @@ export default function App() {
               onChange={(event) => setUsername(event.target.value)}
               minLength={3}
               maxLength={32}
-              pattern="^[A-Za-z0-9._-]{3,32}$"
+              pattern="[A-Za-z0-9._\-]{3,32}"
               required
             />
             <p className="field-note">3–32 letters, numbers, dots, underscores, or hyphens.</p>
@@ -299,12 +390,106 @@ export default function App() {
               <h1 id="page-title">Things to do</h1>
               <p>Small steps add up. What would you like to get done?</p>
             </div>
-            <button className="signout-button" type="button" onClick={() => void signOut()} disabled={busy}>
-              Sign out
-            </button>
+            <div className="header-actions">
+              <button
+                className="signout-button"
+                type="button"
+                aria-expanded={accountOpen}
+                aria-controls="account-panel"
+                onClick={() => {
+                  setProfileUsername(auth.username);
+                  setAccountOpen((open) => !open);
+                  setError("");
+                  setNotice("");
+                }}
+              >
+                Account
+              </button>
+              <button className="signout-button" type="button" onClick={() => void signOut()} disabled={busy}>
+                Sign out
+              </button>
+            </div>
           </div>
           <p className="signed-in-as">Signed in as <strong>{auth.username}</strong></p>
         </header>
+
+        {accountOpen && (
+          <section className="account-panel" id="account-panel" aria-labelledby="account-title">
+            <h2 id="account-title">Account settings</h2>
+            <form className="account-form" onSubmit={saveUsername}>
+              <label htmlFor="profile-username">Username</label>
+              <input
+                id="profile-username"
+                value={profileUsername}
+                onChange={(event) => setProfileUsername(event.target.value)}
+                minLength={3}
+                maxLength={32}
+                pattern="[A-Za-z0-9._\-]{3,32}"
+                required
+              />
+              <p className="field-note">3–32 letters, numbers, dots, underscores, or hyphens.</p>
+              <button className="account-submit" type="submit" disabled={busy}>
+                Update username
+              </button>
+            </form>
+
+            <form className="account-form" onSubmit={updatePassword}>
+              <h3>Change password</h3>
+              <label htmlFor="current-password">Current password</label>
+              <input
+                id="current-password"
+                type="password"
+                autoComplete="current-password"
+                value={currentPassword}
+                onChange={(event) => setCurrentPassword(event.target.value)}
+                maxLength={128}
+                required
+              />
+              <label htmlFor="new-password">New password</label>
+              <input
+                id="new-password"
+                type="password"
+                autoComplete="new-password"
+                value={newPassword}
+                onChange={(event) => setNewPassword(event.target.value)}
+                minLength={12}
+                maxLength={128}
+                required
+              />
+              <p className="field-note">Use 12–128 characters.</p>
+              <button className="account-submit" type="submit" disabled={busy}>
+                Change password
+              </button>
+            </form>
+
+            <form className="account-form delete-account-form" onSubmit={removeAccount}>
+              <h3>Delete account</h3>
+              <p className="field-note">This permanently deletes your account and all its todos.</p>
+              <label htmlFor="delete-password">Current password</label>
+              <input
+                id="delete-password"
+                type="password"
+                autoComplete="current-password"
+                value={deletePassword}
+                onChange={(event) => setDeletePassword(event.target.value)}
+                maxLength={128}
+                required
+              />
+              <label htmlFor="delete-confirmation">Type DELETE to confirm</label>
+              <input
+                id="delete-confirmation"
+                value={deleteConfirmation}
+                onChange={(event) => setDeleteConfirmation(event.target.value)}
+                pattern="DELETE"
+                autoComplete="off"
+                required
+              />
+              <button className="danger-submit" type="submit" disabled={busy}>
+                Delete my account
+              </button>
+            </form>
+          </section>
+        )}
 
         {error && (
           <div className="error" role="alert">
@@ -314,6 +499,7 @@ export default function App() {
             </button>
           </div>
         )}
+        {notice && <div className="success" role="status">{notice}</div>}
 
         <form className="add-form" onSubmit={addTodo}>
           <label className="visually-hidden" htmlFor="new-todo">
