@@ -260,7 +260,7 @@ async def lifespan(_: FastAPI):
     yield
 
 
-app = FastAPI(title="MarketHub API", version="1.0.0", lifespan=lifespan)
+app = FastAPI(title="Shoplix API", version="1.0.0", lifespan=lifespan)
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[origin.strip() for origin in os.getenv("CORS_ORIGINS", "http://localhost:5173").split(",") if origin.strip()],
