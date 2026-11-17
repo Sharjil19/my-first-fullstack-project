@@ -1,30 +1,29 @@
-# Todo List
+# Marketday
 
-A small full-stack CRUD app with a FastAPI API, React/TypeScript frontend, and PostgreSQL database.
-Users can sign up and sign in; todos are private to the account that created them.
+A multi-vendor marketplace starter built with React, TypeScript, FastAPI, SQLAlchemy, and PostgreSQL. Customers can discover products, manage a shopping bag, place demo orders, and track fulfillment. Vendors can publish and archive products, update fulfillment, and review estimated payouts. Administrators can review marketplace activity and manage account roles.
 
 ## Requirements
 
 - Python 3.10+
 - Node.js 20.19+ (or 22.12+)
-- PostgreSQL installed and running locally
+- PostgreSQL
 
-## Setup
+## Local setup
 
-From the project root, copy `.env.example` to `.env`:
+Copy `.env.example` to `.env` and update its PostgreSQL credentials as needed:
 
 ```powershell
 Copy-Item .env.example .env
 ```
 
-Create a PostgreSQL role and database matching the values in `.env` (or update `DATABASE_URL` to match your existing local database):
+For the example database values, create a local role and database:
 
 ```powershell
-psql -U postgres -c "CREATE USER todo WITH PASSWORD 'change-me';"
-createdb -U postgres -O todo todos
+psql -U postgres -c "CREATE USER market WITH PASSWORD 'change-me';"
+createdb -U postgres -O market marketplace
 ```
 
-In a first terminal, create a Python environment, install backend dependencies, and start the API:
+Start the API in one terminal:
 
 ```powershell
 py -m venv .venv
@@ -33,7 +32,7 @@ pip install -r backend\requirements.txt
 python -m uvicorn backend.app.main:app --reload
 ```
 
-In a second terminal, install frontend dependencies and start the React app:
+Start the frontend in a second terminal:
 
 ```powershell
 cd frontend
@@ -41,30 +40,40 @@ npm install
 npm run dev
 ```
 
-Open the URL printed by Vite (usually http://localhost:5173). The API documentation is available at http://localhost:8000/docs.
+Open the Vite URL (usually http://localhost:5173). Interactive API documentation is at http://localhost:8000/docs. The API creates its tables on startup. It reads `DATABASE_URL`, `CORS_ORIGINS`, and `COOKIE_SECURE` from `.env`; Vite reads `VITE_API_URL`. For local HTTP development, use `COOKIE_SECURE=false`; use HTTPS and `COOKIE_SECURE=true` when deployed.
 
-The backend creates the `todos` table automatically on startup. The frontend reads `VITE_API_URL`; the backend reads `DATABASE_URL` and `CORS_ORIGINS` from the root `.env` file.
-For local HTTP development, keep `COOKIE_SECURE=false`. Set `COOKIE_SECURE=true` when serving the API over HTTPS.
+## Roles
 
-## API
+- **Customer** — select the customer account type at registration to browse, search, add products to a bag, place orders, and track them.
+- **Vendor** — select vendor at registration to manage a product catalog, see orders containing their products, update only their own items' fulfillment state, and view gross sales, the 10% marketplace fee, and estimated payout.
+- **Admin** — registration intentionally cannot create administrator accounts. Promote an existing account through a trusted database session, for example:
 
-| Method | Path | Description |
-| --- | --- | --- |
-| `POST` | `/auth/register` | Create an account and sign in |
-| `POST` | `/auth/login` | Sign in |
-| `GET` | `/auth/me` | Get the signed-in account and CSRF token |
-| `POST` | `/auth/logout` | Sign out |
-| `GET` | `/users/me` | View your account profile |
-| `PATCH` | `/users/me` | Change your username |
-| `POST` | `/users/me/password` | Change your password and sign out other sessions |
-| `DELETE` | `/users/me` | Delete your account and its todos |
-| `GET` | `/todos` | List your todos |
-| `GET` | `/todos/{id}` | Get one of your todos |
-| `POST` | `/todos` | Create a todo (`{"title": "..."}`) |
-| `PATCH` | `/todos/{id}` | Update your todo's title and/or completion status |
-| `DELETE` | `/todos/{id}` | Delete your todo |
+  ```sql
+  UPDATE users SET role = 'admin' WHERE username = 'your-admin-username';
+  ```
 
-Passwords must be 12-128 characters. They are stored as Argon2 hashes. Sessions use random, server-side tokens in HttpOnly, SameSite cookies; write requests also require a CSRF token. Use HTTPS and set `COOKIE_SECURE=true` outside local development. If you already have todos from an earlier version, they are left unassigned and are not exposed to any account.
-Changing a password requires the current password and invalidates all existing sessions, then signs in the current browser again. Account deletion requires the current password and typing `DELETE`; it permanently removes that account's todos.
+  Admins can view order and sales summaries, update order status, and assign customer/vendor/admin roles to other accounts. An admin cannot demote their own account, and the final administrator cannot be demoted.
 
-This is a learning app, not a production-ready identity service. Before exposing it publicly, add login rate limiting and account recovery, and use managed secrets and database migrations.
+## API overview
+
+| Method | Path | Access | Purpose |
+| --- | --- | --- | --- |
+| `POST` | `/auth/register`, `/auth/login` | Public | Create a customer/vendor account or sign in |
+| `GET` | `/auth/me` | Signed in | Restore the session and CSRF token |
+| `POST` | `/auth/logout` | Signed in | Revoke the current session |
+| `GET` | `/products`, `/products/categories` | Public | Browse and filter active products |
+| `GET`, `POST` | `/vendor/products` | Vendor | List and create the vendor's products |
+| `PATCH`, `DELETE` | `/vendor/products/{id}` | Owning vendor | Update or archive a product |
+| `GET` | `/cart` | Customer | Read the shopping bag |
+| `POST`, `PATCH`, `DELETE` | `/cart/items/{product_id}` | Customer | Add, change quantity, or remove a bag item |
+| `POST`, `GET` | `/orders` | Customer | Place a demo order or view order history |
+| `GET` | `/vendor/orders`, `/vendor/analytics` | Vendor | Review fulfillment and payout analytics |
+| `PATCH` | `/vendor/orders/{id}/status` | Vendor | Mark an order shipped or delivered |
+| `GET` | `/admin/summary`, `/admin/orders`, `/admin/users` | Admin | Review marketplace operations |
+| `PATCH` | `/admin/orders/{id}/status`, `/admin/users/{id}/role` | Admin | Manage order status and account roles |
+
+Prices are integer cents in the API. Checkout validates inventory and records orders, but **does not collect payment**. Administrators can cancel orders and restore reserved inventory; estimated vendor payout is gross sales less a 10% platform fee, and this starter does not execute transfers.
+
+Passwords are hashed with Argon2. Authentication uses random server-side session tokens in HttpOnly, SameSite cookies; state-changing requests require the session's CSRF token in `X-CSRF-Token`. Role checks are enforced by the API, not only the interface.
+
+This is a learning starter, not a production-ready commerce system. Before public deployment, add payment provider integration, database migrations, login rate limiting, account recovery, audit logging, stronger operational monitoring, and managed secrets. Use a migration tool such as Alembic when evolving a deployed schema.
